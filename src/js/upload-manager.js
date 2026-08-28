@@ -473,10 +473,13 @@ class UploadManager {
         })
         u.updateStatus(t('uploading'))
         try {
-          const result = await this.#uploadSingleFile(u.id, u.key, compressed, u.contentType)
-          u.updateStatus(
-            compressionStatus || `${filesize(compressed.size)} · Complete`
+          const result = await this.#uploadSingleFile(
+            u.id,
+            u.key,
+            compressed,
+            u.contentType
           )
+
           return result
         } catch (e) {
           u.updateStatus('')
