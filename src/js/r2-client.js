@@ -2,6 +2,7 @@ import { AwsClient } from 'aws4fetch'
 import { PAGE_SIZE } from './constants.js'
 import { encodeS3Key } from './utils.js'
 import { ConfigManager } from './config-manager.js'
+const API_URL = 'https://r2-api.laman7apps.workers.dev'
 
 /** @typedef {{ key: string; isFolder: boolean; size?: number; lastModified?: string }} FileItem */
 
@@ -14,55 +15,66 @@ class R2Client {
   /** @param {ConfigManager} configManager */
   init(configManager) {
     this.#config = configManager
-    const cfg = configManager.get()
+    /*const cfg = configManager.get()
     this.#client = new AwsClient({
       accessKeyId: cfg.accessKeyId,
       secretAccessKey: cfg.secretAccessKey,
       service: 's3',
       region: 'auto',
-    })
+    })*/
   }
 
   /** @param {string} [prefix] @param {string} [continuationToken] */
   async listObjects(prefix = '', continuationToken = '') {
-    const url = new URL(/** @type {ConfigManager} */ (this.#config).getBucketUrl())
-    url.searchParams.set('list-type', '2')
-    url.searchParams.set('delimiter', '/')
-    url.searchParams.set('max-keys', String(PAGE_SIZE))
-    if (prefix) url.searchParams.set('prefix', prefix)
-    if (continuationToken) url.searchParams.set('continuation-token', continuationToken)
+    const url = new URL(`${API_URL}/api/files`)
 
-    const res = await /** @type {AwsClient} */ (this.#client).fetch(url.toString())
+    if (prefix) {
+      url.searchParams.set('prefix', prefix)
+    }
+
+    const res = await fetch(url)
+
     if (!res.ok) {
-      if (res.status === 401) throw new Error('HTTP_401')
-      if (res.status === 403) throw new Error('HTTP_403')
-      if (res.status === 404) throw new Error('HTTP_404')
       throw new Error(`HTTP ${res.status}`)
     }
 
-    const text = await res.text()
-    const doc = new DOMParser().parseFromString(text, 'application/xml')
+    const data = await res.json()
 
-    /** @type {FileItem[]} */
-    const folders = [...doc.querySelectorAll('CommonPrefixes > Prefix')].map((el) => ({
-      key: el.textContent ?? '',
-      isFolder: true,
-    }))
+    const folders = new Map()
+    const files = []
 
-    /** @type {FileItem[]} */
-    const files = [...doc.querySelectorAll('Contents')]
-      .map((el) => ({
-        key: el.querySelector('Key')?.textContent ?? '',
-        size: parseInt(el.querySelector('Size')?.textContent ?? '0', 10),
-        lastModified: el.querySelector('LastModified')?.textContent ?? '',
-        isFolder: false,
-      }))
-      .filter((f) => f.key !== prefix)
+    for (const item of data.files || []) {
+      const relative = prefix
+        ? item.key.slice(prefix.length)
+        : item.key
 
-    const isTruncated = doc.querySelector('IsTruncated')?.textContent === 'true'
-    const nextToken = doc.querySelector('NextContinuationToken')?.textContent || ''
+      if (!relative) continue
 
-    return { folders, files, isTruncated, nextToken }
+      const slash = relative.indexOf('/')
+
+      if (slash !== -1) {
+        const folderName = relative.slice(0, slash + 1)
+
+        folders.set(folderName, {
+          key: prefix + folderName,
+          isFolder: true,
+        })
+      } else {
+        files.push({
+          key: item.key,
+          size: item.size,
+          lastModified: item.uploaded,
+          isFolder: false,
+        })
+      }
+    }
+
+    return {
+      folders: [...folders.values()],
+      files,
+      isTruncated: false,
+      nextToken: '',
+    }
   }
 
   /**
@@ -84,13 +96,30 @@ class R2Client {
 
   /** @param {string} key @param {string} contentType */
   async putObjectSigned(key, contentType) {
-    const url = `${/** @type {ConfigManager} */ (this.#config).getBucketUrl()}/${encodeS3Key(key)}`
-    const req = await /** @type {AwsClient} */ (this.#client).sign(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-    })
-    return { url: req.url, headers: Object.fromEntries(req.headers.entries()) }
+  const res = await fetch(`${API_URL}/api/upload-url`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      key,
+      contentType,
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`)
   }
+
+  const data = await res.json()
+
+  return {
+    url: data.uploadUrl,
+    headers: {
+      'Content-Type': contentType,
+    },
+  }
+}
 
   /** @param {string} key */
   async getObject(key) {
@@ -117,15 +146,11 @@ class R2Client {
 
   /** @param {string} key @param {string} filename */
   async getDownloadUrl(key, filename) {
-    const base = `${/** @type {ConfigManager} */ (this.#config).getBucketUrl()}/${encodeS3Key(key)}`
-    const url = new URL(base)
-    url.searchParams.set('response-content-disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
-    const signed = await /** @type {AwsClient} */ (this.#client).sign(url.toString(), {
-      method: 'GET',
-      aws: { signQuery: true },
-    })
-    return signed.url
-  }
+  const url = new URL(`${API_URL}/api/download`)
+  url.searchParams.set('key', key)
+
+  return url.toString()
+}
 
   /** @param {string} key */
   getPublicUrl(key) {
@@ -151,15 +176,18 @@ class R2Client {
 
   /** @param {string} key */
   async deleteObject(key) {
-    const url = `${/** @type {ConfigManager} */ (this.#config).getBucketUrl()}/${encodeS3Key(key)}`
-    const res = await /** @type {AwsClient} */ (this.#client).fetch(url, { method: 'DELETE' })
-    if (!res.ok) {
-      if (res.status === 401) throw new Error('HTTP_401')
-      if (res.status === 403) throw new Error('HTTP_403')
-      if (res.status === 404) throw new Error('HTTP_404')
-      throw new Error(`HTTP ${res.status}`)
-    }
+  const url = new URL(`${API_URL}/api/file`)
+  url.searchParams.set('key', key)
+
+  const res = await fetch(url, {
+    method: 'DELETE',
+  })
+
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('HTTP_404')
+    throw new Error(`HTTP ${res.status}`)
   }
+}
 
   /** @param {string} src @param {string} dest */
   async copyObject(src, dest) {

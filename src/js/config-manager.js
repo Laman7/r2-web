@@ -28,8 +28,9 @@ class ConfigManager {
   }
 
   isValid() {
-    const c = this.load()
-    return !!(c.accountId && c.accessKeyId && c.secretAccessKey && c.bucket)
+   // const c = this.load()
+   // return !!(c.accountId && c.accessKeyId && c.secretAccessKey && c.bucket)
+   return true
   }
 
   getEndpoint() {
