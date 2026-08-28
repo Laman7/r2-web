@@ -83,16 +83,19 @@ class R2Client {
    * @returns {Promise<boolean>}
    */
   async fileExists(key) {
-    const url = new URL(/** @type {ConfigManager} */ (this.#config).getBucketUrl())
-    url.searchParams.set('list-type', '2')
-    url.searchParams.set('max-keys', '1')
-    url.searchParams.set('prefix', key)
-    const res = await /** @type {AwsClient} */ (this.#client).fetch(url.toString())
-    if (!res.ok) return false
-    const text = await res.text()
-    const doc = new DOMParser().parseFromString(text, 'application/xml')
-    return [...doc.querySelectorAll('Contents > Key')].some((el) => el.textContent === key)
+  const url = new URL(`${API_URL}/api/files`)
+  url.searchParams.set('prefix', key)
+
+  const res = await fetch(url)
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`)
   }
+
+  const data = await res.json()
+
+  return (data.files || []).some((file) => file.key === key)
+}
 
   /** @param {string} key @param {string} contentType */
   async putObjectSigned(key, contentType) {
