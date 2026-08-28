@@ -611,7 +611,7 @@ const I18N = {
     http404Error: 'Bucket not found (404), please verify the Bucket Name',
     uploadSuccess: '{count} file(s) uploaded!',
     uploadPartialFail: "{success} uploaded, {fail} didn't make it",
-    fileTooLarge: '"{name}" is too large (over 5GB) — try rclone for big uploads',
+    fileTooLarge: '"{name}" is too large (over 5 GiB) — multipart upload is required',
     overwriteTitle: 'File Already Exists',
     overwriteMsg: '"{name}" already exists. Overwrite it?',
     overwriteSkip: 'Skip',
