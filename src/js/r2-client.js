@@ -2,7 +2,7 @@ import { AwsClient } from 'aws4fetch'
 import { PAGE_SIZE } from './constants.js'
 import { encodeS3Key } from './utils.js'
 import { ConfigManager } from './config-manager.js'
-const API_URL = 'https://r2-api.laman7apps.workers.dev'
+const API_URL = ''
 
 /** @typedef {{ key: string; isFolder: boolean; size?: number; lastModified?: string }} FileItem */
 
