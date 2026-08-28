@@ -126,31 +126,32 @@ class R2Client {
 
   /** @param {string} key */
   async getObject(key) {
-    const url = `${/** @type {ConfigManager} */ (this.#config).getBucketUrl()}/${encodeS3Key(key)}`
-    const res = await /** @type {AwsClient} */ (this.#client).fetch(url)
-    if (!res.ok) {
-      if (res.status === 401) throw new Error('HTTP_401')
-      if (res.status === 403) throw new Error('HTTP_403')
-      if (res.status === 404) throw new Error('HTTP_404')
-      throw new Error(`HTTP ${res.status}`)
-    }
-    return res
+  const url = new URL(`${API_URL}/api/download`)
+  url.searchParams.set('key', key)
+
+  const res = await fetch(url)
+
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('HTTP_404')
+    throw new Error(`HTTP ${res.status}`)
   }
+
+  return res
+}
 
   /** @param {string} key */
   async getPresignedUrl(key) {
-    const url = `${/** @type {ConfigManager} */ (this.#config).getBucketUrl()}/${encodeS3Key(key)}`
-    const signed = await /** @type {AwsClient} */ (this.#client).sign(url, {
-      method: 'GET',
-      aws: { signQuery: true },
-    })
-    return signed.url
-  }
+  const url = new URL(`${API_URL}/api/download`)
+  url.searchParams.set('key', key)
+
+  return url.toString()
+}
 
   /** @param {string} key @param {string} filename */
   async getDownloadUrl(key, filename) {
   const url = new URL(`${API_URL}/api/download`)
   url.searchParams.set('key', key)
+  url.searchParams.set('download', '1')
 
   return url.toString()
 }
