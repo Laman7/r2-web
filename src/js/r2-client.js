@@ -232,20 +232,21 @@ class R2Client {
 
   /** @param {string} prefix */
   async createFolder(prefix) {
-    const key = prefix.endsWith('/') ? prefix : prefix + '/'
-    const url = `${/** @type {ConfigManager} */ (this.#config).getBucketUrl()}/${encodeS3Key(key)}`
-    const res = await /** @type {AwsClient} */ (this.#client).fetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Length': '0' },
-      body: '',
-    })
-    if (!res.ok) {
-      if (res.status === 401) throw new Error('HTTP_401')
-      if (res.status === 403) throw new Error('HTTP_403')
-      if (res.status === 404) throw new Error('HTTP_404')
-      throw new Error(`HTTP ${res.status}`)
-    }
+  const key = prefix.endsWith('/') ? prefix : prefix + '/'
+
+  const res = await fetch(`${API_URL}/api/folder`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ key }),
+  })
+
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('HTTP_404')
+    throw new Error(`HTTP ${res.status}`)
   }
+}
 }
 
 export { R2Client }
