@@ -194,21 +194,22 @@ class R2Client {
 
   /** @param {string} src @param {string} dest */
   async copyObject(src, dest) {
-    const cfg = /** @type {ConfigManager} */ (this.#config).get()
-    const url = `${/** @type {ConfigManager} */ (this.#config).getBucketUrl()}/${encodeS3Key(dest)}`
-    const res = await /** @type {AwsClient} */ (this.#client).fetch(url, {
-      method: 'PUT',
-      headers: {
-        'x-amz-copy-source': `/${cfg.bucket}/${encodeS3Key(src)}`,
-      },
-    })
-    if (!res.ok) {
-      if (res.status === 401) throw new Error('HTTP_401')
-      if (res.status === 403) throw new Error('HTTP_403')
-      if (res.status === 404) throw new Error('HTTP_404')
-      throw new Error(`HTTP ${res.status}`)
-    }
+  const res = await fetch(`${API_URL}/api/copy`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      src,
+      dest,
+    }),
+  })
+
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('HTTP_404')
+    throw new Error(`HTTP ${res.status}`)
   }
+}
 
   /** @param {string} key @param {string} contentType */
   async updateContentType(key, contentType) {
