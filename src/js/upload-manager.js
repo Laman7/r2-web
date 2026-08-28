@@ -474,7 +474,9 @@ class UploadManager {
         u.updateStatus(t('uploading'))
         try {
           const result = await this.#uploadSingleFile(u.id, u.key, compressed, u.contentType)
-          u.updateStatus(compressionStatus || filesize(compressed.size))
+          u.updateStatus(
+            compressionStatus || `${filesize(compressed.size)} · Complete`
+          )
           return result
         } catch (e) {
           u.updateStatus('')
@@ -503,35 +505,80 @@ class UploadManager {
   }
 
   /** @param {string} id @param {string} key @param {File} file @param {string} contentType */
-  async #uploadSingleFile(id, key, file, contentType) {
-    const signed = await this.#r2.putObjectSigned(key, contentType)
-    const bar = $(`#${id}-bar`)
+async #uploadSingleFile(id, key, file, contentType) {
+  const signed = await this.#r2.putObjectSigned(key, contentType)
 
-    if (bar) bar.classList.add('indeterminate')
+  const bar = $(`#${id}-bar`)
+  const status = $(`#${id}-status`)
 
-    const headers = new Headers()
-    for (const [k, v] of Object.entries(signed.headers)) {
-      if (k.toLowerCase() !== 'host') headers.set(k, v)
-    }
-
-    const res = await fetch(signed.url, {
-      method: 'PUT',
-      headers,
-      body: file,
-    })
-
-    if (bar) bar.classList.remove('indeterminate')
-
-    if (!res.ok) {
-      if (bar) bar.classList.add('error')
-      throw new Error(`HTTP ${res.status}`)
-    }
-
-    if (bar) {
-      bar.classList.add('done')
-      bar.style.width = '100%'
+  const headers = {}
+  for (const [k, v] of Object.entries(signed.headers)) {
+    if (k.toLowerCase() !== 'host') {
+      headers[k] = v
     }
   }
+
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    xhr.open('PUT', signed.url, true)
+
+    for (const [k, v] of Object.entries(headers)) {
+      xhr.setRequestHeader(k, v)
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return
+
+      const percent = Math.round((event.loaded / event.total) * 100)
+
+      if (bar) {
+        bar.classList.remove('indeterminate')
+        bar.style.width = `${percent}%`
+      }
+
+      if (status) {
+        status.textContent =
+          `${formatBytes(event.loaded)} / ${formatBytes(event.total)} (${percent}%)`
+      }
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (bar) {
+          bar.classList.remove('indeterminate')
+          bar.classList.add('done')
+          bar.style.width = '100%'
+        }
+
+        if (status) {
+          status.textContent = `${formatBytes(file.size)} / ${formatBytes(file.size)} (100%)`
+        }
+
+        resolve()
+      } else {
+        if (bar) bar.classList.add('error')
+        reject(new Error(`HTTP ${xhr.status}`))
+      }
+    }
+
+    xhr.onerror = () => {
+      if (bar) bar.classList.add('error')
+      reject(new Error('Network error during upload'))
+    }
+
+    xhr.send(file)
+  })
+}
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B'
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
 }
 
 export { UploadManager }
